@@ -14,6 +14,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed, wait, ALL_COMPL
 from itertools import repeat
 import torch
 import os
+from scripts.utils import remove_substring
 
 class BasicPipeline:
     """Base object of all pipelines. A pipeline includes the overall process of RAG.
@@ -229,7 +230,10 @@ class CheckRAG(BasicPipeline):
                         temp_hlcn.append(check_result)
                 temp_modify[hlcn] = temp_hlcn
             result = self.modifier.inference(questions[i], retrieval_results[i], init_result, list(temp_modify.values()), use_refiner=False)
-            result = self.checker.inference(questions[i], result, use_refiner=False, check_format=True)
+            result_ = self.checker.inference(questions[i], result, use_refiner=False, check_format=True)
+            if "No need change" not in result_:
+                result = result_
+            result = remove_substring(result, "No need change")
             result = result.lstrip('\n')
             for prefix in prefixes:
                 if result.lower().startswith(prefix):

@@ -18,6 +18,7 @@ import numpy as np
 import argparse
 import torch
 import json
+import re
 
 
 def load_model(config, is_test=True, is_naiverag=False):
@@ -171,4 +172,11 @@ def pooling(pooler_output, last_hidden_state, attention_mask=None, pooling_metho
         return pooler_output
     else:
         raise NotImplementedError("Pooling method not implemented!")
+    
+def remove_substring(s, substring):
+    # 使用正则表达式匹配子串及其左右可能存在的空行
+    pattern = re.compile(r'\n*\s*' + re.escape(substring) + r'\s*\n*', re.IGNORECASE)
+    # 替换匹配到的子串及其左右空行为单个空行
+    modified_s = re.sub(pattern, '\n', s)
+    return modified_s.strip()  # 去除字符串首尾的空行
     
