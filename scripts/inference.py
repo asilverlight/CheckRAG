@@ -35,11 +35,13 @@ class BaseInference:
             'logical inconsistency': "LLM is logically inconsistent in answering questions, in particular, the statements of the LLM's output are contradictory, and there is no fixed truth value.",
             'fabrication': "LLM create entirely false statements that have no basis in referenced documents, and fabrications are pure inventions by the model. For example, an LLM might invent a quote from a historical figure that never existed.",
         }
+        self.system_prompt_format_checker = ()
+        self.user_prompt_format_checker = ()
     
     def make_prompts(self, *args, **kwargs):
         pass
     
-    def make_first_prompt(self, *args):
+    def make_prompt_check_format(self, *args):
         pass
         
     
@@ -66,17 +68,25 @@ class BaseInference:
     def format_judgments(self, *args):
         pass
     
-    def inference(self, *args, rag_type='LLM ensemble', use_refiner=True, hlcn_type=""):
+    def inference(self, *args, rag_type='LLM ensemble', use_refiner=True, hlcn_type="", check_format=False):
         # print(self.__class__.__name__)
         if use_refiner:
             system_prompt = self.system_prompt_refiner
+        elif check_format:
+            system_prompt = self.system_prompt_format_checker
         else:
             system_prompt = self.system_prompt
         # if isinstance(self, Ensemble):
         #     system_prompts = [self.system_prompt] * batch_size
-        if isinstance(self, Rethinker) or isinstance(self, Checker):
+        if (isinstance(self, Rethinker) or isinstance(self, Checker)) and not check_format:
             system_prompt = system_prompt.format(hlcn_type=hlcn_type, example=self.hlcn_examples[hlcn_type])
-        user_prompt = self.make_prompts(*args, use_refiner=use_refiner)
+        if isinstance(self, Checker):
+            if check_format:
+                user_prompt = self.make_prompt_check_format(*args)
+            else:
+                user_prompt = self.make_prompts(*args, use_refiner=use_refiner)
+        else:
+            user_prompt = self.make_prompts(*args, use_refiner=use_refiner)
         # if isinstance(self, Ensemble):
         #     print(system_prompts)
         #     print(user_prompts)
@@ -356,10 +366,33 @@ class Checker(BaseInference):
             "If not, only output \"The answer and reasons do not have \"{hlcn_type}\" problem.\", and do not output anything else. "
             "Please follow the output format strictly, and do not output anything else."
         )
+        self.system_prompt_format_checker = (
+            "Here is a question and an answer for it. "
+            "You are now asked to change the format of the answer to remove some redundant content, such as drop the words like \"Answer: \"\"The answer is\" to make the original answer more concise. "
+            "But if the answer itself is concise, do not change, and output \"No need change\". "
+            "Here are some examples:\n"
+            "Example 1:\n"
+            "Question: who plays alec ramsay in the black stallion\n"
+            "Answer to be modified: \n####\nKelly Reno plays alec ramsay in the black stallion\n####\n"
+            "Modified Answer: Kelly Reno\n"
+            "Example 2:\n"
+            "Question: when did red bull come to the united states\n"
+            "Answer to be modified:\n####\nAnswer: 1997\n####\n"
+            "Modified Answer: 1997\n"
+            "Example 3:\n"
+            "Question: how long is a prime minister term in uk\n"
+            "Answer to be modified:\n####\nA prome minister term in uk is at Her Majesty's pleasure\n####\n"
+            "Modified Answer: At Her Majesty's pleasure\n"
+        )
         self.user_prompt = (
             "Question: {question}\n\n"
             "Referenced Documents: \n{documents}\n\n"
             "Reasons and Answer: {answer}"
+        )
+        self.user_prompt_format_checker = (
+            "Question: {question}\n"
+            "Answer to be modified: {answer}\n"
+            "Modified Answer: "
         )
         
     def make_prompts(self, question, retrieval_results, answer, use_refiner=False):
@@ -369,6 +402,10 @@ class Checker(BaseInference):
             format_references = self.format_reference(retrieval_results)
         input_params = {'question': question, 'documents': format_references, 'answer': answer}
         return self.user_prompt.format(**input_params)
+    
+    def make_prompt_check_format(self, question, answer):
+        input_params = {'question': question, 'answer': answer}
+        return self.user_prompt_format_checker.format(**input_params)
     
 class Generator(BaseInference):
     def __init__(self, config, model, tokenizer):
@@ -402,17 +439,17 @@ class Modifier(BaseInference):
         super().__init__(config, model, tokenizer)
         self.system_prompt = (
             "Here is a question and some referenced documents, and here is also an answer to the question based on the referenced documents. "
-            "There are several LLMs' judgments to determine whether this answer has problems. "
+            "There are several LLMs' judgments to determine whether this answer has problems and types of problems. "
             "You are now asked to synthesize the given information to output a final answer."
             #"Do not repeat given question, do not output your reasons or any thought process, and some words like \"The answer is...\"\"because of the reason that...\". "
             "Only output a final answer for the question and do not output any redundant words.\n"
-            "Here is an example for answer's format instruction:\n"
-            "Question: which material is the heaviest in term of density?\n"
-            "Incorrect Format Answer:\n####\n"
-            "I think that Osmium is the answer.\n"
-            "Osmium is the heaviest material in term of dentisy.\n"
-            "Answer: Osmium.\n####\n"
-            "Correct Format Answer:\nOsmium"
+            # "Here is an example for answer's format instruction:\n"
+            # "Question: which material is the heaviest in term of density?\n"
+            # "Incorrect Format Answer:\n####\n"
+            # "I think that Osmium is the answer.\n"
+            # "Osmium is the heaviest material in term of dentisy.\n"
+            # "Answer: Osmium.\n####\n"
+            # "Correct Format Answer:\nOsmium"
         )
         self.user_prompt = (
             "Question: {question}\n\n"

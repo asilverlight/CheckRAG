@@ -20,7 +20,7 @@ import json
 
 config = {
     'metrics': ['em', 'f1', 'acc'],
-    'result_path': '/data00/yifei_chen/multi_llms_for_CoT/datasets/nq/results/checkRAG.jsonl',
+    'result_path': '/data00/yifei_chen/multi_llms_for_CoT/results/nq/checkRAG.jsonl',
     'golden_answer_path': '/data00/yifei_chen/multi_llms_for_CoT/datasets/nq/results/naiveRAG.jsonl', 
     'save_dir': '/data00/yifei_chen/multi_llms_for_CoT/datasets/hotpotqa/LLM_ensemble_results.jsonl',
     'dataset_name': 'nq',
@@ -74,13 +74,13 @@ def evaluate(rag_type):
     current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     generators = config['generator']['model_name']
     if rag_type != 'naive':
-        log_entry = f"[{current_time}] Result: {eval_results}, Generators: {generators}, Dataset: {config['dataset_name']}, Refiner: {config['refiner_name']}\n"
+        log_entry = f"[{current_time}] Result: {eval_results}, Generators: {generators}, Dataset: {config['dataset_name']}, Refiner: {config['refiner_name']}, Hallucinations: {config['hlcn_type']}\n"
     else:
         log_entry = f"[{current_time}] Result: {eval_results}, RAG type: {rag_type}, Dataset: {config['dataset_name']}, Refiner: {config['refiner_name']}\n"
-    log_file = open('/data00/yifei_chen/multi_llms_for_CoT/datasets/nq/result.log', 'a')
+    log_file = open('/data00/yifei_chen/multi_llms_for_CoT/results/nq/result.log', 'a')
     log_file.write(log_entry)
     print(eval_results)
     
 if __name__ == '__main__':
-    evaluate('naive')
+    evaluate('check')
     

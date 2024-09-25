@@ -27,11 +27,11 @@ config_dict = {
 
 config_inference = {
     'batch_size': 4,
-    'RAG_type': 'naive',
+    'RAG_type': 'check',
     'use_refiner': False,
     'use_rethink': True,# 是否需要多轮思考
     'rethinking_rounds': 1,# 需要重新思考的轮数
-    'result_path': '/data00/yifei_chen/multi_llms_for_CoT/datasets/nq/results/naiveRAG.jsonl',
+    'result_path': '/data00/yifei_chen/multi_llms_for_CoT/results/nq/checkRAG.jsonl',
     'hlcn_type': ["factual incorrectness", "fabrication"],#"misinterpretation", "logical inconsistency", 
     'generator': 
         {

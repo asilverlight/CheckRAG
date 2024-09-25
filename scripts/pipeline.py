@@ -197,6 +197,7 @@ class CheckRAG(BasicPipeline):
             self.refiner = AbstractiveRecompRefiner(config['refiner'], models['refiner'], tokenizers['refiner'])
             
     def run(self, questions, golden_answers=None):
+        prefixes = ['answer: ', 'answer:']
         initial_results = []
         results = []
         modify_results = []
@@ -228,7 +229,11 @@ class CheckRAG(BasicPipeline):
                         temp_hlcn.append(check_result)
                 temp_modify[hlcn] = temp_hlcn
             result = self.modifier.inference(questions[i], retrieval_results[i], init_result, list(temp_modify.values()), use_refiner=False)
+            result = self.checker.inference(questions[i], result, use_refiner=False, check_format=True)
             result = result.lstrip('\n')
+            for prefix in prefixes:
+                if result.lower().startswith(prefix):
+                    result = result[len(prefix):]
             # result = result.rstrip('\n')
             modify_results.append(temp_modify)
             results.append(result)
@@ -246,7 +251,7 @@ class CheckRAG(BasicPipeline):
                     temp_dict['golden answer'] = golden_answer
                     fw.write(ujson.dumps(temp_dict) + '\n')
                     
-            save_path = '/data00/yifei_chen/multi_llms_for_CoT/datasets/nq/results/checkRAG_indent4.jsonl'
+            save_path = '/data00/yifei_chen/multi_llms_for_CoT/results/nq/checkRAG_indent4.jsonl'
             with open(self.result_path, 'r', encoding='utf-8') as fr, open(save_path, 'w', encoding='utf-8') as fw:
                 for line in fr:
                     fw.write(ujson.dumps(ujson.loads(line), indent=4) + '\n')
@@ -260,7 +265,7 @@ class CheckRAG(BasicPipeline):
                     temp_dict['golden answer'] = golden_answer
                     fw.write(ujson.dumps(temp_dict) + '\n')
                     
-            save_path = '/data00/yifei_chen/multi_llms_for_CoT/datasets/nq/results/naiveRAG_indent4.jsonl'
+            save_path = '/data00/yifei_chen/multi_llms_for_CoT/results/nq/naiveRAG_indent4.jsonl'
             with open(self.result_path, 'r', encoding='utf-8') as fr, open(save_path, 'w', encoding='utf-8') as fw:
                 for line in fr:
                     fw.write(ujson.dumps(ujson.loads(line), indent=4) + '\n')
