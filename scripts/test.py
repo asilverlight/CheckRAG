@@ -6,88 +6,140 @@ from tqdm import tqdm
 import datetime, time
 import random
 import argparse
-import json
+import re
 import ujson
 from flashrag.evaluator.utils import normalize_answer
 
-naive_path = "/data00/yifei_chen/multi_llms_for_CoT/datasets/nq/results/naiveRAG.jsonl"
-check_path = "/data00/yifei_chen/multi_llms_for_CoT/results/nq/checkRAG.jsonl"
-golden_answer = []
-differ_check = []
-differ_naive = []
+dataset_name = "hotpotqa"
+naive_path = "/data00/yifei_chen/multi_llms_for_CoT/results/"+ dataset_name + "/naiveRAG.jsonl"
+check_path = "/data00/yifei_chen/multi_llms_for_CoT/results/"+ dataset_name + "/checkRAG.jsonl"# 最终结果
+check = []
+naive = []
 result = []
+save_path = "/data00/yifei_chen/multi_llms_for_CoT/results/"+ dataset_name + "/differ_naive_check.jsonl"
+source_data_path = "/data00/yifei_chen/multi_llms_for_CoT/datasets/truthfulqa/dev.jsonl"
 
-# with open(naive_path, 'r', encoding='utf-8') as fr:
-#     for line in fr:
-#         data = ujson.loads((line))
-#         golden_answer.append(data['golden answer'])
+
+# from modelscope import snapshot_download
+# model_dir = snapshot_download('BAAI/bge-base-en-v1.5', cache_dir='/data00/yifei_chen/multi_llms_for_CoT/models/')
+
+
+
+# with open(check_path, 'r', encoding='utf-8') as fr_c, open(naive_path, 'r', encoding='utf-8') as fr_n:
+#     for line in fr_n:
+#         data = ujson.loads(line)
 #         differ_naive.append(data)
+#     for line in fr_c:
+#         data = ujson.loads(line)
+#         differ_check.append(data)
+    
+def golden_answer_in_retrieval(golden_answer, retrieval_results):
+    count = 0
+    for retrieval_result in retrieval_results:
+        for golden_answer_ in golden_answer:
+            pattern = r'\b' + re.escape(golden_answer_) + r'\b'
+            if re.search(pattern, retrieval_result['contents']):
+                count += 1
+                break
+    return count
         
-with open(check_path, 'r', encoding='utf-8') as fr:
-    for line in fr:
-        differ_check.append(ujson.loads((line)))
-        
-for data in differ_check:
-    if 'No need change' in data['answer']:
-        print(data['answer'])
         
 # for i in range(len(differ_check)):
-#     temp_check = normalize_answer(differ_check[i]['answer'])
-#     temp_naive = normalize_answer((differ_naive[i]['answer']))
-#     for golden in golden_answer[i]:
-#         golden = normalize_answer((golden))
-#         if golden == temp_naive and golden != temp_check:
-#             result.append((differ_check[i]))
-            
-# res_path = "/data00/yifei_chen/multi_llms_for_CoT/results/nq/differ_naive_check.jsonl"
-# with open(res_path, 'w', encoding='utf-8') as fw:
-#     for data in result:
-#         fw.write(ujson.dumps(data, indent=4) + '\n')
-
-# # rng = np.random.default_rng(1557)
-
-
-
-# data_path = "/data00/yifei_chen/multi_llms_for_CoT/datasets/nq/nq_test.jsonl"
-# sample_data_path = "/data00/yifei_chen/multi_llms_for_CoT/datasets/nq/test.jsonl"
-# data = []
-# sample_data = []
-# with open(data_path, 'r', encoding='utf-8') as fr:
-#     for line in fr:
-#         data.append(json.loads(line))
-
-# with open(sample_data_path, 'r', encoding='utf-8') as fr:
-#     for line in fr:
-#         sample_data.append(json.loads(line))
+#     golden_answers = differ_check[i]['golden answer']
+#     if not any(golden_answer.lower() in differ_check[i]['answer'].lower() for golden_answer in golden_answers) and any(golden_answer.lower() in differ_naive[i]['answer'].lower() for golden_answer in golden_answers):#:# and not any(golden_answer.lower() in differ_check[i]['answer'].lower() for golden_answer in golden_answers):
+#         result.append(differ_check[i])
+#         # print(result)
+# new_results = []
+# for data in result:
+#     if golden_answer_in_retrieval(data['golden answer'], data['retrieval result']):
+#         new_results.append(data)
         
-# res = []
-# mylist = [d["id"] for d in sample_data]
-# while True:
-#     random_data = random.sample(data, 3)
-#     if all(metadata not in sample_data for metadata in random_data):
-#         print(random_data)
-#         break
+# print(len(new_results))
+# with open(save_path, 'w', encoding='utf-8') as fw:
+#     for data_ in new_results:
+#         fw.write(ujson.dumps(data_, indent=4) + '\n')
+
+
+with open(check_path, 'r', encoding='utf-8') as fr:
+    for line in fr:
+        data = ujson.loads(line)
+        check.append(data)
+        
+# # 1、先找出irel docs和rel docs
+# doc_situations = [[] for i in range(len(check[0]["retrieval result"]) + 1)]
+# # print(check[0]["retrieval result"][0])
+# for data in check:
+#     count = golden_answer_in_retrieval(data['golden answer'], data['retrieval result'])
+#     # print(count)
+#     doc_situations[count].append(data)
     
-# s = '\nApril 1st'
-# print(s.lstrip('\n'))
-import re
+def find_answer_check(datas, first_answer_type, second_answer_type):
+    first_answers = []
+    second_answers = []
+    for data in datas:
+        if first_answer_type == 'wrong':
+            if all(golden_answer not in data['initial answer'] and 'no information' not in data['initial answer'].lower() for golden_answer in data['golden answer']):
+                first_answers.append(data)
+        elif first_answer_type == 'correct':
+            if any(golden_answer in data['initial answer'] for golden_answer in data['golden answer']):
+                first_answers.append(data)
+        elif first_answer_type == 'no information':
+            if 'no information' in data['initial answer'].lower():
+                first_answers.append(data)
+    for data in first_answers:
+        if second_answer_type == 'wrong':
+            if all(golden_answer not in data['answer'] and 'no information' not in data['answer'].lower() for golden_answer in data['golden answer']):
+                second_answers.append(data)
+        elif second_answer_type == 'correct':
+            if any(golden_answer in data['answer'] for golden_answer in data['golden answer']):
+                second_answers.append(data)
+        elif second_answer_type == 'no information':
+            if 'no information' in data['answer'].lower():
+                second_answers.append(data)
+    
+    with open(save_path, 'w', encoding='utf-8') as fw:
+        for data_ in second_answers:
+            fw.write(ujson.dumps(data_, indent=4) + '\n')
+    return round(len(second_answers) / len(first_answers) if len(first_answers) > 0 else 0, 4)
+first_answer_type = ['wrong', 'correct', 'no information']
+second_answer_type = ['wrong', 'correct', 'no information']
+# _ = find_answer_check(check, 'no information', 'correct')
+# for first_type in first_answer_type:
+#     for second_type in second_answer_type:
+#         print(f"The naiverag answer is {first_type}, The modified answer is {second_type}, P({second_type}|{first_type}): {find_answer(check, first_type, second_type)}")
 
-def remove_substring_and_surrounding_newlines(s, substring):
-    # 使用正则表达式匹配子串及其左右可能存在的空行
-    pattern = re.compile(r'\n*\s*' + re.escape(substring) + r'\s*\n*', re.IGNORECASE)
-    # 替换匹配到的子串及其左右空行为单个空行
-    modified_s = re.sub(pattern, '\n', s)
-    return modified_s.strip()  # 去除字符串首尾的空行
-
-# 示例使用
-input_string = """
-This is a test string.
-
-
-This part should be removed.
-
-The rest of the text.
-"""
-
-cleaned_string = remove_substring_and_surrounding_newlines(input_string, "No need change")
-print(cleaned_string)
+def find_answer_naiverag(datas, retrieval_type, answer_type):
+    retrieval_results = []
+    rel_results = []
+    for data in datas:
+        for retrieval_result in data['retrieval result']:
+            pattern = [r'\b' + re.escape(golden_answer) + r'\b' for golden_answer in data['golden answer']]
+            if any(re.search(pattern[i], retrieval_result['contents']) for i in range(len(pattern))):
+                rel_results.append(data)
+                break
+    irrel_results = [data for data in datas if data not in rel_results]
+    if retrieval_type == 'irrel':
+        retrieval_results = irrel_results
+    else:
+        retrieval_results = rel_results
+    naiverag = []
+    for data in retrieval_results:
+        if answer_type == 'wrong':
+            if all(golden_answer.lower() not in data['answer'].lower() and 'no information' not in data['answer'].lower() for golden_answer in data['golden answer']):
+                naiverag.append(data)
+        elif answer_type == 'correct':
+            if any(golden_answer.lower() in data['answer'].lower() for golden_answer in data['golden answer']):
+                naiverag.append(data)
+        elif answer_type == 'no information':
+            if 'no information' in data['answer'].lower():
+                naiverag.append(data)
+    with open(save_path, 'w', encoding='utf-8') as fw:
+        for data_ in naiverag:
+            fw.write(ujson.dumps(data_, indent=4) + '\n')
+    return round(len(naiverag) / len(retrieval_results) if len(retrieval_results) > 0 else 0, 4)
+retrieval_type = ['rel', 'irrel']
+answer_type = ['wrong', 'correct', 'no information']
+_ = find_answer_naiverag(check, 'irrel', 'correct')
+# for retrieval_type_ in retrieval_type:
+#     for answer_type_ in answer_type:
+#         print(f"The retrieval documents are {retrieval_type_}, The answer type is {answer_type_}, P({answer_type_}|{retrieval_type_}): {find_answer_naiverag(check, retrieval_type_, answer_type_)}")

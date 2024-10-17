@@ -19,15 +19,28 @@ import argparse
 import torch
 import json
 import re
+from vllm import LLM, SamplingParams
+# torch.cuda.empty_cache()
+# import gc
+# gc.collect()
+# torch.cuda.device_count()
+
+# available_gpus = [i for i in range(torch.cuda.device_count())]
+# print("Available GPUs:", available_gpus)
+# import os
+
+# os.environ['VLLM_WORKER_MULTIPROC_METHOD'] = 'spawn'
 
 
-def load_model(config, is_test=True, is_naiverag=False):
+def load_model(config, is_test=True, pipeline_type='multi_hlcn'):
     # 加载要用的model和tokenizer
     # RAG，modify，ensemble：llama2
     # decompose，rewrite：llama3
     # judgment：baichuan，mistral，qwen，glm
     models = {}
     tokenizers = {}
+    sample_params = {}
+    generation_params = {}
     if not is_test:
         for key, value in config_inference.items():
             if key != 'judgers':
@@ -110,37 +123,101 @@ def load_model(config, is_test=True, is_naiverag=False):
         # tokenizers['refiner'] = tokenizers['generators'][0]
         # models['ensembler'] = models['generators'][0]
         # tokenizers['ensembler'] = tokenizers['generators'][0]
-        models['generator'] = AutoModelForCausalLM.from_pretrained(
-                    config['generator']['model_path'],
-                    device_map=config['generator']['device'],
-                    torch_dtype=config['generator']['type'],
-                    trust_remote_code=True,
-                )# .to(torch.device(value['device']))
-        # models['modifier'] = AutoModelForCausalLM.from_pretrained(
-        #             config['modifier']['model_path'],
-        #             device_map=config['modifier']['device'],
-        #             torch_dtype=config['modifier']['type'],
-        #             trust_remote_code=True,
-        #         )
-        models['modifier'] = models['generator']
-        models['checker'] = models['modifier']
-        models['rethinker'] = models['checker']
         
-        tokenizers['generator'] = AutoTokenizer.from_pretrained(
-                    config['generator']['model_path'],
-                    trust_remote_code=True,
-                    model_max_length=config['generator']['max_input_len']
+        # models['checker'] = LLM(
+        #     config['checker']['model_path'],
+        #     dtype=config['checker']['type'],
+        #     enforce_eager=True,
+        #     trust_remote_code=True,
+        #     max_model_len=4096,
+        #     gpu_memory_utilization=0.5,
+        #     device=torch.device('cuda:0'),
+        # )
+        # tokenizers['checker'] = models['checker'].get_tokenizer()
+        # generation_params['checker'] = dict()
+        # generation_params['checker'].update(config['checker']['generator_params'])
+        # # generation_params['checker']['max_input_len'] = config['checker']['max_input_len']
+        # # generation_params['checker']["stop_token_ids"] = config['checker']['stop_token_ids']#[tokenizers['checker'].eos_token_id, 128001, 128009]#
+        # sample_params['checker'] = SamplingParams(
+        #     **generation_params['checker'],
+        #     stop_token_ids=config['checker']['stop_token_ids'],
+        #     )
+        
+        # os.environ["CUDA_VISIBLE_DEVICES"] = "2"
+        models['generator'] = LLM(
+            config['generator']['model_path'],
+            dtype=config['generator']['type'],
+            enforce_eager=True,
+            trust_remote_code=True,
+            max_model_len=config['generator']['max_input_len'],
+            gpu_memory_utilization=config['generator']['gpu_use'],
+            # tensor_parallel_size=2,
+        )
+        tokenizers['generator'] = models['generator'].get_tokenizer()
+        generation_params['generator'] = dict()
+        generation_params['generator'].update(config['generator']['generator_params'])
+        if 'llama' in config['generator']['model_name'].lower():
+            generation_params['generator']['stop_token_ids'] = [tokenizers['generator'].eos_token_id, tokenizers['generator'].convert_tokens_to_ids("<|eot_id|>")]
+        # generation_params['checker']['max_input_len'] = config['checker']['max_input_len']
+        # generation_params['checker']["stop_token_ids"] = config['checker']['stop_token_ids']#[tokenizers['checker'].eos_token_id, 128001, 128009]#
+            sample_params['generator'] = SamplingParams(
+                **generation_params['generator'],
                 )
-        # tokenizers['modifier'] = AutoTokenizer.from_pretrained(
-        #             config['modifier']['model_path'],
-        #             trust_remote_code=True,
-        #             model_max_length=config['modifier']['max_input_len']
+        else:
+            sample_params['generator'] = SamplingParams(
+                **generation_params['generator'],
+                # stop_token_ids=[tokenizers['generator'].eos_token_id]
+                )
+            
+        # models['checker'] = LLM(
+        #     config['checker']['model_path'],
+        #     dtype=config['checker']['type'],
+        #     enforce_eager=True,
+        #     trust_remote_code=True,
+        #     max_model_len=4096,
+        #     gpu_memory_utilization=config['checker']['gpu_use'],
+        #     tensor_parallel_size=2,
+        # )
+        # tokenizers['checker'] = models['checker'].get_tokenizer()
+        # generation_params['checker'] = dict()
+        # generation_params['checker'].update(config['checker']['generator_params'])
+        # if 'llama' in config['checker']['model_name'].lower():
+        #     generation_params['checker']['stop_token_ids'] = [tokenizers['checker'].eos_token_id, tokenizers['checker'].convert_tokens_to_ids("<|eot_id|>")]
+        # # generation_params['checker']['max_input_len'] = config['checker']['max_input_len']
+        # # generation_params['checker']["stop_token_ids"] = config['checker']['stop_token_ids']#[tokenizers['checker'].eos_token_id, 128001, 128009]#
+        #     sample_params['checker'] = SamplingParams(
+        #         **generation_params['checker'],
         #         )
-        tokenizers['modifier'] = tokenizers['generator']
-        tokenizers['checker'] = tokenizers['modifier']
-        tokenizers['rethinker'] = tokenizers['checker']
+        # else:
+        #     sample_params['checker'] = SamplingParams(
+        #         **generation_params['checker'],
+        #         stop_token_ids=config['checker']['stop_token_ids']
+        #         )
         
-    return models, tokenizers
+        
+        
+        if pipeline_type == 'multi_hlcn':
+            models['modifier'] = models['generator']
+            models['checker'] = models['generator']
+            models['rethinker'] = models['checker']
+            tokenizers['modifier'] = tokenizers['generator']
+            tokenizers['checker'] = tokenizers['generator']
+            tokenizers['rethinker'] = tokenizers['checker']
+            sample_params['modifier'] = sample_params['generator']
+            sample_params['checker'] = sample_params['generator']
+            sample_params['rethinker'] = sample_params['checker']
+        elif pipeline_type == 'single_hlcn':
+            models['classifier'] = models['generator']
+            models['simplifier'] = models['generator']
+            models['modifier'] = models['generator']
+            tokenizers['classifier'] = tokenizers['generator']
+            tokenizers['simplifier'] = tokenizers['generator']
+            tokenizers['modifier'] = tokenizers['generator']
+            sample_params['classifier'] = sample_params['generator']
+            sample_params['simplifier'] = sample_params['generator']    
+            sample_params['modifier'] = sample_params['generator']
+        
+    return models, tokenizers, sample_params
 
 def get_dataset(config, data_dir='data_dir', value='question'):
     
@@ -180,3 +257,13 @@ def remove_substring(s, substring):
     modified_s = re.sub(pattern, '\n', s)
     return modified_s.strip()  # 去除字符串首尾的空行
     
+def retain_after_last_substring(s, substring):
+    # 查找最后一个"user\n"子串的位置
+    index = s.rfind(substring)
+    
+    # 如果找到了该子串，则截取该位置之后的所有字符
+    if index != -1 and index + len(substring) < len(s):
+        return s[index + len(substring):]
+    else:
+        # 如果没有找到该子串，则返回原字符串
+        return s

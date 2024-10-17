@@ -3,7 +3,7 @@ import torch
 import ujson
 from torch import nn
 from torch.utils.data import DataLoader, Dataset, random_split
-from transformers import BertTokenizer, BertModel, AdamW, BertForSequenceClassification, AutoModelForCausalLM, AutoTokenizer
+from transformers import BertTokenizer, BertModel, AdamW, BertForSequenceClassification, AutoModelForCausalLM, AutoTokenizer, AutoModel
 from sklearn.metrics import accuracy_score, classification_report
 from tqdm import tqdm
 import random
@@ -47,15 +47,18 @@ query = "who was the killer in the movie i know what you did last summer"
 # print(text)
 # 以下是glm4，能跑通，能输出正确格式
 model = AutoModelForCausalLM.from_pretrained(
-                    '/data00/LLaMA-3-8b-Instruct/',#'/data00/yifei_chen/multi_llms_for_CoT/models/ZhipuAI/glm-4-9b-chat',
+                    '/data00/yifei_chen/multi_llms_for_CoT/models/ZhipuAI/glm-4-9b-chat',#'/data00/LLaMA-3-8b-Instruct/',#,#'/data00/yifei_chen/multi_llms_for_CoT/models/ZhipuAI/glm-4-9b-chat',
                     torch_dtype=torch.bfloat16,
-                    device_map="cuda:2",
+                    device_map="cuda:1",
                     trust_remote_code=True,
                 )#.to(torch.device('cuda:2'))
 tokenizer = AutoTokenizer.from_pretrained(
-                    '/data00/LLaMA-3-8b-Instruct/',#'/data00/yifei_chen/multi_llms_for_CoT/models/ZhipuAI/glm-4-9b-chat',
-                    trust_remote_code=True
+                    '/data00/yifei_chen/multi_llms_for_CoT/models/ZhipuAI/glm-4-9b-chat',#'/data00/LLaMA-3-8b-Instruct/',#'/data00/yifei_chen/BERT_classification/models/qwen/Qwen2-7B-Instruct/',,#'/data00/yifei_chen/multi_llms_for_CoT/models/ZhipuAI/glm-4-9b-chat',
+                    trust_remote_code=True,
+                    model_max_length=2048
                 )
+model = model.eval()
+
 
 
 # # 以下是glm
@@ -113,4 +116,28 @@ tokenizer = AutoTokenizer.from_pretrained(
 # print(response)
 
 
-# 以下是qwen2
+# 以下是llama2，能跑通，能输出正确格式
+
+# input = [
+#     {'role': 'system', 'content': data['system']},
+#     {'role': 'user', 'content': data['instruction'].format(DOCS=docs, QUERY=query)}
+# ]
+# inputs = tokenizer.apply_chat_template(
+#     input,
+#     return_tensors='pt',
+#     add_generation_prompt=True,
+#     truncation=True
+# )
+# extra_eos_tokens = tokenizer.eos_token_id
+# inputs = inputs.to(model.device)
+# outputs = model.generate(
+#     inputs, 
+#     do_sample=True, 
+#     temperature=0.8, 
+#     top_p=0.9, 
+#     max_length=512, 
+#     pad_token_id=tokenizer.eos_token_id,
+#     eos_token_id=extra_eos_tokens,#, 128001[128009]
+#     )
+# response = tokenizer.decode(outputs[0][inputs.shape[-1]:], skip_special_tokens=True)
+# print(response)
